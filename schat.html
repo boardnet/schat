@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>SChat</title>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: #121214; color: #e1e1e6; margin: 0; display: flex; height: 100vh; overflow: hidden; }
+    
+    /* Sol Panel */
+    .sidebar { width: 320px; background: #202024; border-right: 1px solid #323238; display: flex; flex-direction: column; padding: 16px; gap: 14px; }
+    .sidebar h2 { margin: 0; font-size: 3rem; color: #f23427; }
+    
+    .room-form { display: flex; flex-direction: column; gap: 6px; background: #121214; padding: 12px; border-radius: 6px; }
+    .room-form input { padding: 8px; background: #202024; border: 1px solid #323238; border-radius: 4px; color: #fff; font-size: 0.85rem; outline: none; }
+    .room-form input:focus { border-color: #a23238; }
+    
+    .section-title { font-size: 0.75rem; color: #7c7a8a; font-weight: bold; text-transform: uppercase; margin-top: 4px; }
+    .participant-list, .room-list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
+    .participant-list { max-height: 160px; }
+    .room-list { flex: 1; }
+    
+    .participant-item { padding: 8px 10px; background: #121214; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; font-size: 0.85rem; }
+    .status-badge { font-size: 0.7rem; padding: 2px 6px; border-radius: 10px; background: #04d361; color: #000; font-weight: bold; }
+    
+    .room-item { padding: 8px 10px; background: #121214; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; transition: background 0.2s; }
+    .room-item:hover { background: #29292e; }
+    .room-actions { display: flex; align-items: center; gap: 8px; }
+    .room-join-btn { color: #e33f34; cursor: pointer; font-size: 0.75rem; font-weight: bold; }
+    .room-join-btn:hover { text-decoration: underline; }
+    .room-delete-btn { color: #7c7c8a; cursor: pointer; font-size: 0.85rem; padding: 0 4px; border-radius: 3px; }
+    .room-delete-btn:hover { color: #e54242; background: #323238; }
+
+    /* Ana Ekran */
+    .main { flex: 1; display: flex; flex-direction: column; background: #121214; }
+    .header { padding: 14px 16px; background: #202024; border-bottom: 1px solid #a23238; display: flex; justify-content: space-between; align-items: center; }
+    .header-info { display: flex; flex-direction: column; gap: 2px; }
+    .room-title { font-weight: bold; color: #fff; font-size: 0.95rem; }
+    .status-text { font-size: 0.8rem; color: #a8a8b3; }
+    
+    #chat-box { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+    .msg-wrapper { display: flex; flex-direction: column; max-width: 75%; }
+    .msg-wrapper.me { align-self: flex-end; align-items: flex-end; }
+    .msg-wrapper.peer { align-self: flex-start; align-items: flex-start; }
+    .sender-name { font-size: 1rem; color: #a23238; margin-bottom: 3px; }
+    
+    .msg { padding: 8px 12px; border-radius: 6px; font-size: 0.9rem; word-break: break-word; }
+    .msg.me { background: #a23238; color: #fff; }
+    .msg.peer { background: #29292e; color: #e1e1e6; }
+    .msg.system { align-self: center; color: #7c7c8a; font-size: 0.75rem; background: transparent; }
+    
+    .media-preview { max-width: 280px; max-height: 240px; border-radius: 4px; margin-top: 4px; display: block; }
+    .audio-player { margin-top: 6px; max-width: 260px; height: 36px; display: block; }
+
+    .input-bar { padding: 12px 16px; background: #202024; border-top: 1px solid #a23238; display: flex; gap: 8px; align-items: center; }
+    .input-bar input[type="text"] { flex: 1; padding: 10px; background: #121214; border: 1px solid #323238; border-radius: 4px; color: #fff; outline: none; }
+    
+    button { padding: 8px 12px; border: none; border-radius: 4px; background: #e33f34; color: #fff; font-weight: 600; cursor: pointer; transition: background 0.2s; font-size: 0.85rem; }
+    button:hover { background: #fc493d; }
+    button.secondary { background: #323238; }
+    button.secondary:hover { background: #3e3e46; }
+    button.danger { background: #e54242; }
+    button.danger:hover { background: #ff5c5c; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    
+    .file-btn { display: inline-flex; align-items: center; justify-content: center; cursor: pointer; background: #323238; padding: 8px 12px; border-radius: 4px; font-size: 0.85rem; font-weight: 600; }
+    .file-btn:hover { background: #3e3e46; }
+    input[type="file"] { display: none; }
+  </style>
+</head>
+<body>
+
+  <!-- Yan Panel -->
+  <div class="sidebar">
+    <h2>SChat</h2>
+    
+    <div class="room-form">
+      <input type="text" id="username-input" placeholder="Username" value="User" />
+      <input type="text" id="new-room-name" placeholder="Room name" />
+      <input type="password" id="new-room-pass" placeholder="Password (Optional)" />
+      <div style="display: flex; gap: 6px;">
+        <button id="create-room-btn" style="flex: 1;">Create Room</button>
+        <button id="join-room-btn" class="secondary" style="flex: 1;">Join</button>
+      </div>
+    </div>
+
+    <div class="section-title">Users ın room</div>
+    <div class="participant-list" id="participant-list">
+      <div style="font-size:0.8rem; color:#7c7c8a;">Youre not in a room.</div>
+    </div>
+
+    <div class="section-title">Recent rooms</div>
+    <div class="room-list" id="room-list-container"></div>
+  </div>
+
+  <!-- Ana Bölüm -->
+  <div class="main">
+    <div class="header">
+      <div class="header-info">
+        <span class="room-title" id="current-room-display">Join a room</span>
+        <span class="status-text" id="status-display">Waiting...</span>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button id="copy-link-btn" class="secondary" style="display: none;">Invite</button>
+        <button id="mute-btn" class="danger" style="display: none;">🎙️ Mute Mic</button>
+      </div>
+    </div>
+
+    <div id="chat-box"></div>
+
+    <div class="input-bar">
+      <label class="file-btn" title="Send Image / Video / Audio / File">
+        📎 File
+        <input type="file" id="file-input" disabled />
+      </label>
+      <input type="text" id="msg-input" placeholder="Type a message..." disabled />
+      <button id="send-btn" disabled>Send</button>
+    </div>
+  </div>
+
+  <!-- Dinamik Ses Oynatıcıları Kutusu -->
+  <div id="audio-container" style="display:none;"></div>
+
+  <script>
+    let peer = null;
+    let localStream = null;
+    let isMuted = false;
+    let isHost = false;
+    let myUsername = 'User';
+    let currentRoomId = '';
+    let currentPassword = '';
+
+    // Eş Takip Yapıları (Full Mesh)
+    // peersData: { [peerId]: { username: string, conn: DataConnection, call: MediaConnection, audioEl: HTMLAudioElement } }
+    const peersData = {};
+
+    const usernameInput = document.getElementById('username-input');
+    const newRoomName = document.getElementById('new-room-name');
+    const newRoomPass = document.getElementById('new-room-pass');
+    const createRoomBtn = document.getElementById('create-room-btn');
+    const joinRoomBtn = document.getElementById('join-room-btn');
+    const participantList = document.getElementById('participant-list');
+    const roomListContainer = document.getElementById('room-list-container');
+    const currentRoomDisplay = document.getElementById('current-room-display');
+    const statusDisplay = document.getElementById('status-display');
+    const copyLinkBtn = document.getElementById('copy-link-btn');
+    const muteBtn = document.getElementById('mute-btn');
+    const chatBox = document.getElementById('chat-box');
+    const msgInput = document.getElementById('msg-input');
+    const sendBtn = document.getElementById('send-btn');
+    const fileInput = document.getElementById('file-input');
+    const audioContainer = document.getElementById('audio-container');
+
+    async function setupAudio() {
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        muteBtn.style.display = 'inline-block';
+      } catch (err) {
+        console.warn("Microphone permission denied. (Only chat):", err);
+      }
+    }
+
+    function updateParticipantsUI() {
+      participantList.innerHTML = '';
+      if (!currentRoomId) {
+        participantList.innerHTML = '<div style="font-size:0.8rem; color:#7c7c8a;">Youre not in a room.</div>';
+        return;
+      }
+
+      // Kendimiz
+      const meItem = document.createElement('div');
+      meItem.className = 'participant-item';
+      meItem.innerHTML = `<span>${myUsername} (Sen)</span><span class="status-badge">${localStream ? 'Voice' : 'Chat'}</span>`;
+      participantList.appendChild(meItem);
+
+      // Diğer Katılımcılar
+      const activeIds = Object.keys(peersData);
+      activeIds.forEach(id => {
+        const p = peersData[id];
+        const item = document.createElement('div');
+        item.className = 'participant-item';
+        item.innerHTML = `<span>${p.username || 'User'}</span><span class="status-badge">${p.call ? 'Voice' : 'Chat'}</span>`;
+        participantList.appendChild(item);
+      });
+
+      statusDisplay.textContent = `${activeIds.length + 1} users active.`;
+    }
+
+    function addMessage(payload, side = 'peer', senderName = 'User') {
+      const wrapper = document.createElement('div');
+      wrapper.className = `msg-wrapper ${side}`;
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 'sender-name';
+      nameEl.textContent = side === 'me' ? myUsername : senderName;
+      wrapper.appendChild(nameEl);
+
+      const msgDiv = document.createElement('div');
+      msgDiv.className = `msg ${side}`;
+
+      if (payload.type === 'text') {
+        msgDiv.textContent = payload.content;
+      } else if (payload.type === 'file') {
+        const file = payload.file;
+        if (file.fileType.startsWith('image/')) {
+          msgDiv.innerHTML = `<div>${file.name}</div><img class="media-preview" src="${file.data}" alt="${file.name}">`;
+        } else if (file.fileType.startsWith('video/')) {
+          msgDiv.innerHTML = `<div>${file.name}</div><video class="media-preview" controls src="${file.data}"></video>`;
+        } else if (file.fileType.startsWith('audio/')) {
+          msgDiv.innerHTML = `<div>🎵 ${file.name}</div><audio class="audio-player" controls src="${file.data}"></audio>`;
+        } else {
+          msgDiv.innerHTML = `📄 <a href="${file.data}" download="${file.name}" style="color: #fff; text-decoration: underline;">${file.name} (${Math.round(file.size / 1024)} KB)</a>`;
+        }
+      }
+
+      wrapper.appendChild(msgDiv);
+      chatBox.appendChild(wrapper);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function addSystemLog(text) {
+      const div = document.createElement('div');
+      div.className = 'msg system';
+      div.textContent = text;
+      chatBox.appendChild(div);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    // Mesaj veya dosyayı odadaki herkese dağıt
+    function broadcastData(payload) {
+      Object.keys(peersData).forEach(id => {
+        const p = peersData[id];
+        if (p.conn && p.conn.open) {
+          p.conn.send(payload);
+        }
+      });
+    }
+
+    // Yeni gelen ses akışı için audio elementi bağla
+    function handleStream(peerId, remoteStream) {
+      if (!peersData[peerId]) peersData[peerId] = {};
+      
+      let audioEl = peersData[peerId].audioEl;
+      if (!audioEl) {
+        audioEl = document.createElement('audio');
+        audioEl.autoplay = true;
+        audioContainer.appendChild(audioEl);
+        peersData[peerId].audioEl = audioEl;
+      }
+      audioEl.srcObject = remoteStream;
+      updateParticipantsUI();
+    }
+
+    // Katılımcı ayrıldığında temizlik
+    function removePeer(peerId) {
+      const p = peersData[peerId];
+      if (p) {
+        addSystemLog(`${p.username || 'An user'} left the room.`);
+        if (p.audioEl) p.audioEl.remove();
+        if (p.conn) p.conn.close();
+        if (p.call) p.call.close();
+        delete peersData[peerId];
+        updateParticipantsUI();
+      }
+    }
+
+    // Veri kanalı olay yönetimi (Data Connection)
+    function setupDataConnection(c) {
+      const remotePeerId = c.peer;
+
+      c.on('data', (data) => {
+        if (!data) return;
+
+        // 1. Şifre ve Katılma Doğrulaması (Host tarafında)
+        if (data.type === 'auth') {
+          if (isHost) {
+            if (data.password === currentPassword) {
+              const currentPeerList = Object.keys(peersData).map(id => ({
+                id: id,
+                username: peersData[id].username
+              }));
+
+              peersData[remotePeerId] = { username: data.username, conn: c };
+
+              // Onayla ve mevcut diğer eşlerin listesini yeni katılan kişiye gönder
+              c.send({
+                type: 'auth-success',
+                hostUsername: myUsername,
+                peers: currentPeerList
+              });
+
+              enableInputs();
+              updateParticipantsUI();
+              addSystemLog(`${data.username} joined the room.`);
+            } else {
+              c.send({ type: 'auth-failed', reason: 'Wrong password.' });
+              c.close();
+            }
+          }
+        } 
+        
+        // 2. Katılan Kişiye Host'tan Başarı Cevabı ve Mesh Listesi Gelmesi
+        else if (data.type === 'auth-success') {
+          peersData[remotePeerId] = { username: data.hostUsername, conn: c };
+          enableInputs();
+          updateParticipantsUI();
+          addSystemLog(`Connected to the room.`);
+
+          // Host ile sesli görüşmeyi başlat
+          if (localStream) {
+            const call = peer.call(remotePeerId, localStream);
+            peersData[remotePeerId].call = call;
+            call.on('stream', stream => handleStream(remotePeerId, stream));
+          }
+
+          // Odadaki DİĞER eşlere otomatik bağlan (Mesh Tamamlama)
+          if (Array.isArray(data.peers)) {
+            data.peers.forEach(p => {
+              connectToPeerDirectly(p.id, p.username);
+            });
+          }
+        }
+
+        // 3. Eşler Arası Doğrudan Selamlaşma (Peer-to-Peer Mesh Handshake)
+        else if (data.type === 'mesh-intro') {
+          peersData[remotePeerId] = { username: data.username, conn: c };
+          c.send({ type: 'mesh-intro-reply', username: myUsername });
+          updateParticipantsUI();
+          addSystemLog(`Connected to ${data.username}.`);
+        } 
+        else if (data.type === 'mesh-intro-reply') {
+          if (peersData[remotePeerId]) {
+            peersData[remotePeerId].username = data.username;
+          } else {
+            peersData[remotePeerId] = { username: data.username, conn: c };
+          }
+          updateParticipantsUI();
+        }
+
+        // 4. Standart Mesaj / Dosya
+        else if (data.type === 'text' || data.type === 'file') {
+          const sender = (peersData[remotePeerId] && peersData[remotePeerId].username) ? peersData[remotePeerId].username : 'User';
+          addMessage(data, 'peer', sender);
+        }
+
+        // 5. Yetki Reddi
+        else if (data.type === 'auth-failed') {
+          alert('Connection Error: ' + data.reason);
+          cleanupCurrentSession();
+        }
+      });
+
+      c.on('close', () => removePeer(remotePeerId));
+      c.on('error', () => removePeer(remotePeerId));
+    }
+
+    // Mesh ağı için odadaki diğer kişiye doğrudan bağlan
+    function connectToPeerDirectly(targetPeerId, targetUsername) {
+      if (peersData[targetPeerId]) return;
+
+      const directConn = peer.connect(targetPeerId);
+      peersData[targetPeerId] = { username: targetUsername, conn: directConn };
+
+      directConn.on('open', () => {
+        directConn.send({ type: 'mesh-intro', username: myUsername });
+      });
+
+      setupDataConnection(directConn);
+
+      // Diğer eş ile doğrudan sesli görüşme aç
+      if (localStream) {
+        const directCall = peer.call(targetPeerId, localStream);
+        peersData[targetPeerId].call = directCall;
+        directCall.on('stream', stream => handleStream(targetPeerId, stream));
+      }
+    }
+
+    // 1. Oda Oluşturma (Host)
+    function createRoom(roomId, password) {
+      cleanupCurrentSession();
+      myUsername = usernameInput.value.trim() || 'Host';
+      currentRoomId = roomId;
+      currentPassword = password;
+      isHost = true;
+
+      peer = new Peer(roomId);
+
+      peer.on('open', () => {
+        saveRoom(roomId);
+        currentRoomDisplay.textContent = `${roomId} (Host)`;
+        copyLinkBtn.style.display = 'inline-block';
+        updateParticipantsUI();
+        addSystemLog(`"Room ${roomId}" created. Waiting for participants...`);
+      });
+
+      // Gelen bağlantılar
+      peer.on('connection', (c) => setupDataConnection(c));
+
+      // Gelen ses aramaları
+      peer.on('call', (call) => {
+        call.answer(localStream);
+        if (!peersData[call.peer]) peersData[call.peer] = {};
+        peersData[call.peer].call = call;
+        call.on('stream', (stream) => handleStream(call.peer, stream));
+      });
+
+      peer.on('error', (err) => {
+        alert(err.type === 'unavailable-id' ? 'Room name is already in use!' : 'Error: ' + err.type);
+      });
+    }
+
+    // 2. Odaya Katılma (Client)
+    function joinRoom(roomId, password) {
+      cleanupCurrentSession();
+      myUsername = usernameInput.value.trim() || 'User';
+      currentRoomId = roomId;
+      isHost = false;
+
+      peer = new Peer();
+
+      peer.on('open', () => {
+        saveRoom(roomId);
+        currentRoomDisplay.textContent = `Room: ${roomId}`;
+        statusDisplay.textContent = 'Connecting to the room...';
+
+        const hostConn = peer.connect(roomId);
+        hostConn.on('open', () => {
+          hostConn.send({ type: 'auth', password: password, username: myUsername });
+        });
+
+        setupDataConnection(hostConn);
+      });
+
+      // Eşlerden veya host'tan gelen ses aramaları
+      peer.on('call', (call) => {
+        call.answer(localStream);
+        if (!peersData[call.peer]) peersData[call.peer] = {};
+        peersData[call.peer].call = call;
+        call.on('stream', (stream) => handleStream(call.peer, stream));
+      });
+
+      // Diğer eşlerin mesh bağlantı istekleri
+      peer.on('connection', (c) => setupDataConnection(c));
+
+      peer.on('error', (err) => {
+        alert(err.type === 'peer-unavailable' ? 'Room not found (Host is offline).' : 'Connection error: ' + err.type);
+      });
+    }
+
+    function sendMessage() {
+      const text = msgInput.value.trim();
+      if (!text) return;
+
+      const payload = { type: 'text', content: text };
+      broadcastData(payload);
+      addMessage(payload, 'me');
+      msgInput.value = '';
+    }
+
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const payload = {
+          type: 'file',
+          file: {
+            name: file.name,
+            size: file.size,
+            fileType: file.type,
+            data: reader.result
+          }
+        };
+        broadcastData(payload);
+        addMessage(payload, 'me');
+        fileInput.value = '';
+      };
+      reader.readAsDataURL(file);
+    });
+
+    function enableInputs() {
+      msgInput.disabled = false;
+      sendBtn.disabled = false;
+      fileInput.disabled = false;
+    }
+
+    function cleanupCurrentSession() {
+      Object.keys(peersData).forEach(id => removePeer(id));
+      if (peer) peer.destroy();
+      chatBox.innerHTML = '';
+      msgInput.disabled = true;
+      sendBtn.disabled = true;
+      fileInput.disabled = true;
+      currentRoomId = '';
+      updateParticipantsUI();
+    }
+
+    copyLinkBtn.addEventListener('click', () => {
+      const url = new URL(window.location.href);
+      url.searchParams.set('room', currentRoomId);
+      navigator.clipboard.writeText(url.toString()).then(() => alert('Invite link copied!'));
+    });
+
+    function saveRoom(name) {
+      let rooms = JSON.parse(localStorage.getItem('p2p_saved_rooms') || '[]');
+      if (!rooms.includes(name)) {
+        rooms.push(name);
+        localStorage.setItem('p2p_saved_rooms', JSON.stringify(rooms));
+        renderRooms();
+      }
+    }
+
+    function deleteRoom(name) {
+      let rooms = JSON.parse(localStorage.getItem('p2p_saved_rooms') || '[]');
+      rooms = rooms.filter(r => r !== name);
+      localStorage.setItem('p2p_saved_rooms', JSON.stringify(rooms));
+      renderRooms();
+    }
+
+    function renderRooms() {
+      roomListContainer.innerHTML = '';
+      const rooms = JSON.parse(localStorage.getItem('p2p_saved_rooms') || '[]');
+      
+      if (rooms.length === 0) {
+        roomListContainer.innerHTML = '<div style="font-size:0.8rem; color:#7c7c8a;">No registered rooms.</div>';
+        return;
+      }
+
+      rooms.forEach(r => {
+        const item = document.createElement('div');
+        item.className = 'room-item';
+        
+        const titleSpan = document.createElement('span');
+        titleSpan.textContent = `# ${r}`;
+        
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'room-actions';
+
+        const joinSpan = document.createElement('span');
+        joinSpan.className = 'room-join-btn';
+        joinSpan.textContent = 'Join';
+        joinSpan.addEventListener('click', () => {
+          newRoomName.value = r;
+          const pass = prompt(`"${r}" password:`) || '';
+          joinRoom(r, pass);
+        });
+
+        const delSpan = document.createElement('span');
+        delSpan.className = 'room-delete-btn';
+        delSpan.innerHTML = '&times;';
+        delSpan.title = 'Listeden Sil';
+        delSpan.addEventListener('click', (e) => {
+          e.stopPropagation();
+          deleteRoom(r);
+        });
+
+        actionsDiv.appendChild(joinSpan);
+        actionsDiv.appendChild(delSpan);
+        item.appendChild(titleSpan);
+        item.appendChild(actionsDiv);
+        roomListContainer.appendChild(item);
+      });
+    }
+
+    createRoomBtn.addEventListener('click', () => {
+      const r = newRoomName.value.trim();
+      if (!r) return alert('Please enter the room name.');
+      createRoom(r, newRoomPass.value);
+    });
+
+    joinRoomBtn.addEventListener('click', () => {
+      const r = newRoomName.value.trim();
+      if (!r) return alert('Enter the room name to join.');
+      joinRoom(r, newRoomPass.value);
+    });
+
+    sendBtn.addEventListener('click', sendMessage);
+    msgInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMessage(); });
+
+    muteBtn.addEventListener('click', () => {
+      if (!localStream) return;
+      const track = localStream.getAudioTracks()[0];
+      if (track) {
+        isMuted = !isMuted;
+        track.enabled = !isMuted;
+        muteBtn.textContent = isMuted ? '🎙️ Unmute' : '🎙️ Mute';
+        muteBtn.style.background = isMuted ? '#04d361' : '#e54242';
+      }
+    });
+
+    window.addEventListener('DOMContentLoaded', async () => {
+      await setupAudio();
+      renderRooms();
+      const params = new URLSearchParams(window.location.search);
+      const roomParam = params.get('room');
+      if (roomParam) {
+        newRoomName.value = roomParam;
+        const pass = prompt(`"You invited to the room: ${roomParam}" . Password:`) || '';
+        joinRoom(roomParam, pass);
+      }
+    });
+  </script>
+</body>
+</html>
